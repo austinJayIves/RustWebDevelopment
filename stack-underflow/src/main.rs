@@ -1,16 +1,12 @@
+use stack_underflow::models::question::{Question, QuestionId, Tag};
+use std::str::FromStr;
+
 fn main() {
-    struct Book {
-        title: String,
-        isbn: Option<String>,
-    }
-
-    let book = Book {
-        title: "Great book".to_string(),
-        isbn: Some(String::from("1-123-456")),
-    };
-
-    match book.isbn {
-        Some(i) => println!("The ISBN of the book: {} is {}", book.title, i),
-        None => println!("We don't know the ISBN of the book {}", book.title),
-    }
+    let question = Question::new(
+        QuestionId::from_str("1").expect("No id provided"),
+        "First Question".to_string(),
+        "Content of question".to_string(),
+        Some(vec![Tag::from_str("faq").expect("No tag provided")]),
+    );
+    println!("{}", question);
 }
