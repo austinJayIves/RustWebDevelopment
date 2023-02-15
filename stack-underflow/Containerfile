@@ -1,0 +1,13 @@
+FROM alpine:latest as build
+COPY . /data
+WORKDIR /data
+RUN apk add rust cargo -f
+RUN cargo build --release
+
+FROM alpine
+EXPOSE 3000/tcp
+COPY --from=build /data/target/release/stack-underflow /bin/stack-underflow
+RUN apk add libgcc
+RUN adduser -DH -s /bin/false underflow
+USER underflow
+ENTRYPOINT /bin/stack-underflow
