@@ -1,35 +1,58 @@
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+
+use dotenv::dotenv;
 use std::net::SocketAddr;
-use std::str::FromStr;
+use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 
 use axum::{
-    extract::Path,
     http::{
-        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
-        Method, StatusCode,
+        header::{ACCEPT, CONTENT_TYPE},
+        Method,
     },
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
+    routing::{delete, get, post, put},
+    Extension, Router,
 };
-use stack_underflow::models::{
-    error::{AppError, QuestionRepoError},
-    question::{Question, QuestionId, Tag},
+use stack_underflow::{
+    models::store::Store,
+    route::{
+        answer::post_answer,
+        question::{delete_question, get_question, get_questions, post_question, put_question},
+    },
 };
+use tracing_subscriber::fmt::format::FmtSpan;
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
+    tracing_subscriber::fmt()
+        .json()
+        .with_file(true)
+        .with_span_events(FmtSpan::ACTIVE)
+        .init();
+
+    let store = Arc::new(Store::new());
+
     let cors_layer = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST])
+        .allow_methods([Method::GET, Method::PUT, Method::POST, Method::DELETE])
         .allow_origin(Any)
-        .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
+        .allow_headers([ACCEPT, CONTENT_TYPE]);
 
     let app = Router::new()
-        .route("/hello/:name", get(hello_route))
         .route("/questions", get(get_questions))
         .route("/questions/:id", get(get_question))
-        .layer(ServiceBuilder::new().layer(cors_layer));
+        .route("/questions", post(post_question))
+        .route("/questions/:id", put(put_question))
+        .route("/questions/:id", delete(delete_question))
+        .route("/questions/:id/answers", post(post_answer))
+        .layer(
+            ServiceBuilder::new()
+                .layer(cors_layer)
+                .layer(Extension(Arc::clone(&store))),
+        );
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
@@ -38,34 +61,4 @@ async fn main() {
         .serve(app.into_make_service())
         .await
         .unwrap();
-}
-
-async fn hello_route(Path(name): Path<String>) -> String {
-    format!("Hello {}", name)
-}
-
-async fn get_questions() -> impl IntoResponse {
-    let question = Question::new(
-        QuestionId::from_str("ABC").expect("Unable to parse question ID"),
-        "What is the meaning of life, the universe, and everything".to_owned(),
-        "I heard it was '42', but that doesn't sound right".to_owned(),
-        Some(vec![Tag::from_str("Philosophy").expect("Valid tag")]),
-    );
-
-    (StatusCode::OK, Json(question))
-}
-
-async fn get_question(Path(id): Path<String>) -> Result<impl IntoResponse, AppError> {
-    if id == "XYZ" {
-        return Err(QuestionRepoError::InvalidId.into());
-    }
-
-    let question = Question::new(
-        QuestionId::from_str(&id).map_err(|_| QuestionRepoError::InvalidId)?,
-        "What is the meaning of life, the universe, and everything".to_owned(),
-        "I heard it was '42', but that doesn't sound right".to_owned(),
-        Some(vec![Tag::from_str("Philosophy").expect("Valid tag")]),
-    );
-
-    Ok((StatusCode::OK, Json(question)))
 }
